@@ -12,6 +12,35 @@ import time
 import random
 import numpy as np
 import collections
+import collections
+import myo
+import threading
+import time
+import numpy as np
+import tensorflow as tf
+from include.model import model
+from include.data import get_data_set
+
+
+x, y, output, global_step, y_pred_cls = model(6)
+test_x, test_y = get_data_set()
+test_l = ["Relax", "Ok", "Fist", "Like", "Rock", "Spock"]
+saver = tf.train.Saver()
+_SAVE_PATH = "./data/tensorflow_sessions/myo_armband/"
+sess = tf.Session()
+
+
+try:
+    print("Trying to restore last checkpoint ...")
+    last_chk_path = tf.train.latest_checkpoint(checkpoint_dir=_SAVE_PATH)
+    print(last_chk_path)
+    saver.restore(sess, save_path=last_chk_path)
+    print("Restored checkpoint from:", last_chk_path)
+except:
+    print("Failed to restore checkpoint. Initializing variables instead.")
+    sess.run(tf.global_variables_initializer())
+
+
 
 matplotlib.use("TkAgg")
 readings = []
@@ -26,6 +55,25 @@ gestures={}
 
 gestures['fist'] = [1,2,3,4,5,6,7,8]
 gestures['release'] = [1,2,3,4,5,6,7,8]
+
+class MyListener(myo.DeviceListener):
+
+    def __init__(self, queue_size=8):
+        self.lock = threading.Lock()
+        self.emg_data_queue = collections.deque(maxlen=queue_size)
+
+    def on_connect(self, device, timestamp, firmware_version):
+        device.set_stream_emg(myo.StreamEmg.enabled)
+
+    def on_emg_data(self, device, timestamp, emg_data):
+        with self.lock:
+            self.emg_data_queue.append((timestamp, emg_data))
+
+    def get_emg_data(self):
+        with self.lock:
+            return list(self.emg_data_queue)
+
+
 
 class demo_thread(threading.Thread):
     def __init__(self,e1,e2,e3,e4,e5,e6,e7,e8,ax1,ax2,ax3,ax4,ax5,ax6,ax7,ax8,canvas):
@@ -49,7 +97,14 @@ class demo_thread(threading.Thread):
         self.id = id
         self.canvas = canvas
     def run(self):
-        #print('hey')
+
+        myo.init()
+        hub = myo.Hub()
+        start = time.time()
+        temp = []
+        listener = MyListener()
+        hub.run(2000, listener)
+        print('hey')
         flag = True
         m=100
         n=100
@@ -62,81 +117,99 @@ class demo_thread(threading.Thread):
         x6 = collections.deque(100*[0],100)
         x7 = collections.deque(100*[0],100)
         x8 = collections.deque(100*[0],100)
+        
         while flag:
-            
-            random_number1 = random.randint(-3,3)
-            random_number2 = random.randint(-3,3)
-            random_number3 = random.randint(-3,3)
-            random_number4 = random.randint(-3,3)
-            random_number5 = random.randint(-3,3)
-            random_number6 = random.randint(-3,3)
-            random_number7 = random.randint(-3,3)
-            random_number8 = random.randint(-3,3)
-            x1.appendleft(random_number1)
-            x2.appendleft(random_number2)
-            x3.appendleft(random_number3)
-            x4.appendleft(random_number4)
-            x5.appendleft(random_number5)
-            x6.appendleft(random_number6)
-            x7.appendleft(random_number7)
-            x8.appendleft(random_number8)
-            matrix1 = np.random.normal(0,1,m*n).reshape(m,n)
-            matrix2 = np.random.normal(0,1,m*n).reshape(m,n)
-            matrix3 = np.random.normal(0,1,m*n).reshape(m,n)
-            matrix4 = np.random.normal(0,1,m*n).reshape(m,n)
-            matrix5 = np.random.normal(0,1,m*n).reshape(m,n)
-            matrix6 = np.random.normal(0,1,m*n).reshape(m,n)
-            matrix7 = np.random.normal(0,1,m*n).reshape(m,n)
-            matrix8 = np.random.normal(0,1,m*n).reshape(m,n)
+#START
+            t_end = time.time() + 5
+            predictions=[]
+            while time.time() < t_end:
+##                print("blah")
+                val=[0,0,0,0,0,0,0,0]
+                data = listener.get_emg_data()
+                if len(data)!=0:
+                    val=data[1][1]
+                else:
+                    print("No Data available")
+                if time.time() - start >= 1:
+                    response = np.argmax(np.bincount(temp))
+                    predictions.append(response)
+                    print("Predicted gesture: {0}".format(response))
+                    temp = []
+                    start = time.time()
+                if len(data) > 0:
+                    tmp = []
+                    for v in listener.get_emg_data():
+                        tmp.append(v[1])
+                    tmp = list(np.stack(tmp).flatten())
+                    if len(tmp) >= 64:
+                        pred = sess.run(y_pred_cls, feed_dict={x: np.array([tmp])})
+                        temp.append(pred[0])
+                time.sleep(0.01)
 
-            #print(random_number)
-            #time.sleep(1)
-            try:
-                self.ax1.clear()
-                self.ax2.clear()
-                self.ax3.clear()
-                self.ax4.clear()
-                self.ax5.clear()
-                self.ax6.clear()
-                self.ax7.clear()
-                self.ax8.clear()
-                self.ax1.axis([0, 100, -4, 4])
-                self.ax2.axis([0, 100, -4, 4])
-                self.ax3.axis([0, 100, -4, 4])
-                self.ax4.axis([0, 100, -4, 4])
-                self.ax5.axis([0, 100, -4, 4])
-                self.ax6.axis([0, 100, -4, 4])
-                self.ax7.axis([0, 100, -4, 4])
-                self.ax8.axis([0, 100, -4, 4])
-                self.ax1.plot(np.array(x1))
-                self.ax2.plot(np.array(x2))
-                self.ax3.plot(np.array(x3))
-                self.ax4.plot(np.array(x4))
-                self.ax5.plot(np.array(x5))
-                self.ax6.plot(np.array(x6))
-                self.ax7.plot(np.array(x7))
-                self.ax8.plot(np.array(x8))
-                self.canvas.draw()
-                self.e1.delete(0,tk.END)
-                self.e1.insert(0,str(random_number1))
-                self.e2.delete(0,tk.END)
-                self.e2.insert(0,str(random_number2))
-                self.e3.delete(0,tk.END)
-                self.e3.insert(0,str(random_number3))
-                self.e4.delete(0,tk.END)
-                self.e4.insert(0,str(random_number4))
-                self.e5.delete(0,tk.END)
-                self.e5.insert(0,str(random_number5))
-                self.e6.delete(0,tk.END)
-                self.e6.insert(0,str(random_number6))
-                self.e7.delete(0,tk.END)
-                self.e7.insert(0,str(random_number7))
-                self.e8.delete(0,tk.END)
-                self.e8.insert(0,str(random_number8))
+
+                x1.appendleft(val[0])
+                x2.appendleft(val[1])
+                x3.appendleft(val[2])
+                x4.appendleft(val[3])
+                x5.appendleft(val[4])
+                x6.appendleft(val[5])
+                x7.appendleft(val[6])
+                x8.appendleft(val[7])
+                #print(random_number)
                 #time.sleep(1)
-            except Exception :
-                #print(Exception)
-                flag = False
+                try:
+                    self.ax1.clear()
+                    self.ax2.clear()
+                    self.ax3.clear()
+                    self.ax4.clear()
+                    self.ax5.clear()
+                    self.ax6.clear()
+                    self.ax7.clear()
+                    self.ax8.clear()
+                    self.ax1.axis([0, 100, -40, 40])
+                    self.ax2.axis([0, 100, -40, 40])
+                    self.ax3.axis([0, 100, -40, 40])
+                    self.ax4.axis([0, 100, -40, 40])
+                    self.ax5.axis([0, 100, -40, 40])
+                    self.ax6.axis([0, 100, -40, 40])
+                    self.ax7.axis([0, 100, -40, 40])
+                    self.ax8.axis([0, 100, -40, 40])
+                    self.ax1.plot(np.array(x1))
+                    self.ax2.plot(np.array(x2))
+                    self.ax3.plot(np.array(x3))
+                    self.ax4.plot(np.array(x4))
+                    self.ax5.plot(np.array(x5))
+                    self.ax6.plot(np.array(x6))
+                    self.ax7.plot(np.array(x7))
+                    self.ax8.plot(np.array(x8))
+                    self.canvas.draw()
+                    self.e1.delete(0,tk.END)
+                    self.e1.insert(0,str(val[0]))
+                    self.e2.delete(0,tk.END)
+                    self.e2.insert(0,str(val[1]))
+                    self.e3.delete(0,tk.END)
+                    self.e3.insert(0,str(val[2]))
+                    self.e4.delete(0,tk.END)
+                    self.e4.insert(0,str(val[3]))
+                    self.e5.delete(0,tk.END)
+                    self.e5.insert(0,str(val[4]))
+                    self.e6.delete(0,tk.END)
+                    self.e6.insert(0,str(val[5]))
+                    self.e7.delete(0,tk.END)
+                    self.e7.insert(0,str(val[6]))
+                    self.e8.delete(0,tk.END)
+                    self.e8.insert(0,str(val[7]))
+                    #time.sleep(1)
+                except Exception :
+                    #print(Exception)
+                    flag = False
+
+                
+            a=np.array(predictions)
+            print(np.argmax(np.bincount(a)))
+
+#END            
+
 
 class save_thread(threading.Thread):
     def __init__(self,e1,e2,e3,e4,e5,e6,e7,e8):
@@ -233,7 +306,7 @@ class StartPage(tk.Frame):
         button1.pack()
         button1.image = photo1
         button1.place(x = 220,y=400)
-        
+
 
 
 
@@ -431,11 +504,6 @@ class PageOne(tk.Frame):
         button3.pack()
         button3.image = photo3
         button3.place(x=225,y=350)
-
-        # testButton = ttk.Button(self, text="test",
-        #                     command=lambda : controller.show_frame(TestPage))
-        # testButton.pack()
-
 
 
 myapp = MyoArm()
